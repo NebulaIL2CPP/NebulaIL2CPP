@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$OutputDir = "E:\Work\NebulaIL2CPP\dist\arm64-v8a",
+    [string]$OutputDir = ".\dist",
     [ValidateSet("Debug", "Release", "RelWithDebInfo")]
     [string]$Configuration = "Release",
     [string]$JavaHome = $env:JAVA_HOME,

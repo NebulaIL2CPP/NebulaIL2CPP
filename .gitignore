@@ -4,6 +4,7 @@
 /.nebula-build/
 /app/build/
 /app/.cxx/
+/dist/
 /local.properties
 *.iml
 .idea/
