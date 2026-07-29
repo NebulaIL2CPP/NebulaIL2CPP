@@ -1,0 +1,42 @@
+plugins {
+    id "com.android.library"
+}
+
+android {
+    namespace "dev.nebula.il2cpp"
+    compileSdk 34
+    ndkVersion "26.1.10909125"
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 34
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static",
+                          "-DANDROID_ARM_NEON=TRUE"
+                cppFlags "-std=c++17", "-fexceptions", "-frtti"
+                abiFilters "arm64-v8a"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            ndk {
+                debugSymbolLevel "SYMBOL_TABLE"
+            }
+        }
+        debug {
+            jniDebuggable true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("jni/CMakeLists.txt")
+            version "3.22.1"
+        }
+    }
+}

@@ -1,0 +1,9 @@
+[submodule "app/jni/external/Dobby"]
+	path = app/jni/external/Dobby
+	url = https://github.com/jmpews/Dobby.git
+[submodule "app/jni/external/imgui"]
+	path = app/jni/external/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "app/jni/external/json"]
+	path = app/jni/external/json
+	url = https://github.com/nlohmann/json.git
