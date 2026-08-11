@@ -48,6 +48,7 @@ add_library(Nebula SHARED
     src/Core/Log.cpp
     src/Core/Runtime.cpp
     src/Hook/Hook.cpp
+    src/Hook/MemoryPatch.cpp
     src/Il2Cpp/Il2Cpp.cpp
     src/Mods/ModManager.cpp
     src/Mods/ExampleMod.cpp
