@@ -68,6 +68,48 @@ public:
         const std::string& fieldName) const;
     bool GetStaticFieldValue(
         FieldInfo* field, void* output) const;
+    bool SetStaticFieldValue(
+        FieldInfo* field, const void* value) const;
+
+    // Uses the IL2CPP field APIs rather than raw pointer writes. SetFieldValue
+    // is required for managed references because the runtime applies the GC
+    // write barrier when the object field changes.
+    bool GetFieldValue(
+        Il2CppObject* instance, FieldInfo* field, void* output) const;
+    bool SetFieldValue(
+        Il2CppObject* instance, FieldInfo* field,
+        const void* value) const;
+
+    template <typename T>
+    bool GetFieldValue(
+        Il2CppObject* instance, FieldInfo* field, T& output) const {
+        return GetFieldValue(instance, field,
+                             static_cast<void*>(&output));
+    }
+
+    template <typename T>
+    bool SetFieldValue(
+        Il2CppObject* instance, FieldInfo* field,
+        const T& value) const {
+        return SetFieldValue(instance, field,
+                             static_cast<const void*>(&value));
+    }
+
+    [[nodiscard]] Il2CppObject* GetReferenceField(
+        Il2CppObject* instance, FieldInfo* field) const;
+    [[nodiscard]] Il2CppObject* GetReferenceField(
+        Il2CppObject* instance, const std::string& fieldName) const;
+    bool SetReferenceField(
+        Il2CppObject* instance, FieldInfo* field,
+        Il2CppObject* value) const;
+    bool SetReferenceField(
+        Il2CppObject* instance, const std::string& fieldName,
+        Il2CppObject* value) const;
+
+    [[nodiscard]] Il2CppObject* GetStaticReferenceField(
+        FieldInfo* field) const;
+    bool SetStaticReferenceField(
+        FieldInfo* field, Il2CppObject* value) const;
 
     template <typename T>
     [[nodiscard]] T ReadField(void* instance, ptrdiff_t offset) const {
@@ -91,6 +133,12 @@ public:
         void* instance,
         void** params = nullptr,
         Il2CppException** exception = nullptr) const;
+    [[nodiscard]] Il2CppObject* Invoke(
+        Il2CppObject* instance,
+        const std::string& methodName,
+        int argumentCount,
+        void** params = nullptr,
+        Il2CppException** exception = nullptr) const;
 
     template <typename T>
     [[nodiscard]] T Unbox(Il2CppObject* object) const {
@@ -101,6 +149,24 @@ public:
     // Attaches the current native thread to the IL2CPP GC.
     [[nodiscard]] Il2CppThread* AttachCurrentThread() const;
     [[nodiscard]] Il2CppString* NewString(const std::string& value) const;
+    [[nodiscard]] std::string StringToUtf8(
+        Il2CppString* value) const;
+    [[nodiscard]] Il2CppClass* GetObjectClass(
+        Il2CppObject* object) const;
+    [[nodiscard]] Il2CppObject* NewObject(Il2CppClass* klass) const;
+
+    bool GetStringField(
+        Il2CppObject* instance, FieldInfo* field,
+        std::string& output) const;
+    bool GetStringField(
+        Il2CppObject* instance, const std::string& fieldName,
+        std::string& output) const;
+    bool SetStringField(
+        Il2CppObject* instance, FieldInfo* field,
+        const std::string& value) const;
+    bool SetStringField(
+        Il2CppObject* instance, const std::string& fieldName,
+        const std::string& value) const;
 
 private:
     Il2Cpp() = default;
@@ -123,11 +189,18 @@ private:
         Il2CppClass*, const char*) = nullptr;
     size_t (*fieldGetOffset_)(FieldInfo*) = nullptr;
     void (*fieldStaticGetValue_)(FieldInfo*, void*) = nullptr;
+    void (*fieldStaticSetValue_)(FieldInfo*, void*) = nullptr;
+    void (*fieldGetValue_)(Il2CppObject*, FieldInfo*, void*) = nullptr;
+    void (*fieldSetValue_)(Il2CppObject*, FieldInfo*, void*) = nullptr;
     Il2CppObject* (*runtimeInvoke_)(
         const MethodInfo*, void*, void**, Il2CppException**) = nullptr;
     void* (*objectUnbox_)(Il2CppObject*) = nullptr;
+    Il2CppClass* (*objectGetClass_)(Il2CppObject*) = nullptr;
+    Il2CppObject* (*objectNew_)(const Il2CppClass*) = nullptr;
     Il2CppThread* (*threadAttach_)(Il2CppDomain*) = nullptr;
     Il2CppString* (*stringNew_)(const char*) = nullptr;
+    int32_t (*stringLength_)(Il2CppString*) = nullptr;
+    const uint16_t* (*stringChars_)(Il2CppString*) = nullptr;
 };
 
 } // namespace Nebula

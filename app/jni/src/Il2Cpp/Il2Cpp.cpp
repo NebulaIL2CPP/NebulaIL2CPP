@@ -79,6 +79,27 @@ bool AssemblyNameMatches(const char* actual, const std::string& requested) {
     return requested + suffix == actual;
 }
 
+void AppendUtf8(std::string& output, uint32_t codePoint) {
+    if (codePoint <= 0x7F) {
+        output.push_back(static_cast<char>(codePoint));
+    } else if (codePoint <= 0x7FF) {
+        output.push_back(static_cast<char>(0xC0 | (codePoint >> 6)));
+        output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else if (codePoint <= 0xFFFF) {
+        output.push_back(static_cast<char>(0xE0 | (codePoint >> 12)));
+        output.push_back(static_cast<char>(
+            0x80 | ((codePoint >> 6) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    } else {
+        output.push_back(static_cast<char>(0xF0 | (codePoint >> 18)));
+        output.push_back(static_cast<char>(
+            0x80 | ((codePoint >> 12) & 0x3F)));
+        output.push_back(static_cast<char>(
+            0x80 | ((codePoint >> 6) & 0x3F)));
+        output.push_back(static_cast<char>(0x80 | (codePoint & 0x3F)));
+    }
+}
+
 } // namespace
 
 namespace Nebula {
@@ -117,11 +138,19 @@ bool Il2Cpp::Initialize(void* libraryHandle) {
                 classGetFieldFromName_) &&
         Resolve(handle_, "il2cpp_field_get_offset", fieldGetOffset_) &&
         Resolve(handle_, "il2cpp_field_static_get_value",
-                fieldStaticGetValue_) &&
+                 fieldStaticGetValue_) &&
+        Resolve(handle_, "il2cpp_field_static_set_value",
+                fieldStaticSetValue_) &&
+        Resolve(handle_, "il2cpp_field_get_value", fieldGetValue_) &&
+        Resolve(handle_, "il2cpp_field_set_value", fieldSetValue_) &&
         Resolve(handle_, "il2cpp_runtime_invoke", runtimeInvoke_) &&
         Resolve(handle_, "il2cpp_object_unbox", objectUnbox_) &&
+        Resolve(handle_, "il2cpp_object_get_class", objectGetClass_) &&
+        Resolve(handle_, "il2cpp_object_new", objectNew_) &&
         Resolve(handle_, "il2cpp_thread_attach", threadAttach_) &&
-        Resolve(handle_, "il2cpp_string_new", stringNew_);
+        Resolve(handle_, "il2cpp_string_new", stringNew_) &&
+        Resolve(handle_, "il2cpp_string_length", stringLength_) &&
+        Resolve(handle_, "il2cpp_string_chars", stringChars_);
 
     if (!resolved || baseAddress_ == 0) {
         NEBULA_LOGE("Could not initialize IL2CPP runtime");
@@ -271,6 +300,76 @@ bool Il2Cpp::GetStaticFieldValue(
     return true;
 }
 
+bool Il2Cpp::SetStaticFieldValue(
+    FieldInfo* field, const void* value) const {
+    if (!IsReady() || fieldStaticSetValue_ == nullptr ||
+        field == nullptr || value == nullptr) {
+        return false;
+    }
+    fieldStaticSetValue_(field, const_cast<void*>(value));
+    return true;
+}
+
+bool Il2Cpp::GetFieldValue(
+    Il2CppObject* instance, FieldInfo* field, void* output) const {
+    if (!IsReady() || fieldGetValue_ == nullptr ||
+        instance == nullptr || field == nullptr || output == nullptr) {
+        return false;
+    }
+    fieldGetValue_(instance, field, output);
+    return true;
+}
+
+bool Il2Cpp::SetFieldValue(
+    Il2CppObject* instance, FieldInfo* field,
+    const void* value) const {
+    if (!IsReady() || fieldSetValue_ == nullptr ||
+        instance == nullptr || field == nullptr || value == nullptr) {
+        return false;
+    }
+    fieldSetValue_(instance, field, const_cast<void*>(value));
+    return true;
+}
+
+Il2CppObject* Il2Cpp::GetReferenceField(
+    Il2CppObject* instance, FieldInfo* field) const {
+    Il2CppObject* value = nullptr;
+    return GetFieldValue(
+               instance, field, static_cast<void*>(&value))
+               ? value
+               : nullptr;
+}
+
+Il2CppObject* Il2Cpp::GetReferenceField(
+    Il2CppObject* instance, const std::string& fieldName) const {
+    return GetReferenceField(
+        instance, GetField(GetObjectClass(instance), fieldName));
+}
+
+bool Il2Cpp::SetReferenceField(
+    Il2CppObject* instance, FieldInfo* field,
+    Il2CppObject* value) const {
+    return SetFieldValue(
+        instance, field, static_cast<const void*>(&value));
+}
+
+bool Il2Cpp::SetReferenceField(
+    Il2CppObject* instance, const std::string& fieldName,
+    Il2CppObject* value) const {
+    return SetReferenceField(
+        instance, GetField(GetObjectClass(instance), fieldName), value);
+}
+
+Il2CppObject* Il2Cpp::GetStaticReferenceField(FieldInfo* field) const {
+    Il2CppObject* value = nullptr;
+    return GetStaticFieldValue(field, &value) ? value : nullptr;
+}
+
+bool Il2Cpp::SetStaticReferenceField(
+    FieldInfo* field, Il2CppObject* value) const {
+    return SetStaticFieldValue(field, &value);
+}
+
 ptrdiff_t Il2Cpp::GetFieldOffset(
     const std::string& assemblyName,
     const std::string& namespaze,
@@ -300,6 +399,20 @@ Il2CppObject* Il2Cpp::Invoke(
     return result;
 }
 
+Il2CppObject* Il2Cpp::Invoke(
+    Il2CppObject* instance,
+    const std::string& methodName,
+    int argumentCount,
+    void** params,
+    Il2CppException** exception) const {
+    if (instance == nullptr) {
+        return nullptr;
+    }
+    return Invoke(
+        GetMethod(GetObjectClass(instance), methodName, argumentCount),
+        instance, params, exception);
+}
+
 void* Il2Cpp::ObjectUnbox(Il2CppObject* object) const {
     return object == nullptr ? nullptr : objectUnbox_(object);
 }
@@ -322,6 +435,85 @@ Il2CppThread* Il2Cpp::AttachCurrentThread() const {
 
 Il2CppString* Il2Cpp::NewString(const std::string& value) const {
     return IsReady() ? stringNew_(value.c_str()) : nullptr;
+}
+
+std::string Il2Cpp::StringToUtf8(Il2CppString* value) const {
+    std::string output;
+    if (!IsReady() || value == nullptr || stringLength_ == nullptr ||
+        stringChars_ == nullptr) {
+        return output;
+    }
+
+    const int32_t length = stringLength_(value);
+    const uint16_t* characters = stringChars_(value);
+    if (length <= 0 || characters == nullptr) {
+        return output;
+    }
+    output.reserve(static_cast<size_t>(length));
+    for (int32_t index = 0; index < length; ++index) {
+        uint32_t codePoint = characters[index];
+        if (codePoint >= 0xD800 && codePoint <= 0xDBFF &&
+            index + 1 < length) {
+            const uint32_t low = characters[index + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                codePoint = 0x10000 +
+                    ((codePoint - 0xD800) << 10) + (low - 0xDC00);
+                ++index;
+            } else {
+                codePoint = 0xFFFD;
+            }
+        } else if (codePoint >= 0xD800 && codePoint <= 0xDFFF) {
+            codePoint = 0xFFFD;
+        }
+        AppendUtf8(output, codePoint);
+    }
+    return output;
+}
+
+Il2CppClass* Il2Cpp::GetObjectClass(Il2CppObject* object) const {
+    return IsReady() && object != nullptr && objectGetClass_ != nullptr
+               ? objectGetClass_(object)
+               : nullptr;
+}
+
+Il2CppObject* Il2Cpp::NewObject(Il2CppClass* klass) const {
+    return IsReady() && klass != nullptr && objectNew_ != nullptr
+               ? objectNew_(klass)
+               : nullptr;
+}
+
+bool Il2Cpp::GetStringField(
+    Il2CppObject* instance, FieldInfo* field,
+    std::string& output) const {
+    Il2CppObject* object = nullptr;
+    if (!GetFieldValue(
+            instance, field, static_cast<void*>(&object))) {
+        return false;
+    }
+    output = StringToUtf8(reinterpret_cast<Il2CppString*>(object));
+    return true;
+}
+
+bool Il2Cpp::GetStringField(
+    Il2CppObject* instance, const std::string& fieldName,
+    std::string& output) const {
+    return GetStringField(
+        instance, GetField(GetObjectClass(instance), fieldName), output);
+}
+
+bool Il2Cpp::SetStringField(
+    Il2CppObject* instance, FieldInfo* field,
+    const std::string& value) const {
+    Il2CppString* string = NewString(value);
+    return string != nullptr && SetReferenceField(
+        instance, field, reinterpret_cast<Il2CppObject*>(string));
+}
+
+bool Il2Cpp::SetStringField(
+    Il2CppObject* instance, const std::string& fieldName,
+    const std::string& value) const {
+    return SetStringField(
+        instance, GetField(GetObjectClass(instance), fieldName), value);
 }
 
 } // namespace Nebula
